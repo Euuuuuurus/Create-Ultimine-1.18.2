@@ -1,0 +1,40 @@
+# Gradle
+.gradle/
+build/
+out/
+run/
+mcmodsrepo/
+
+# Local Gradle user home / temp dirs used by the sandbox helper script (tools/run-gradle.ps1)
+.gradle-home/
+tmp/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Third-party mod binaries. This repository only ships source - see README "准备本地依赖"
+# for how to populate these before building.
+local-maven/**/*.jar
+libs/*.jar
+deps/
+tools/jdk17/
+tools/*.class
+*.log
+
+# Build logs produced while porting
+build-log-*.txt
+run-server-log*.txt
+verify-*.txt
+tools/zipfs-patch/

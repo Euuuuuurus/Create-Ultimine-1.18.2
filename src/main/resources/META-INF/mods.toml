@@ -1,0 +1,42 @@
+modLoader="kotlinforforge"
+loaderVersion="[3.12,)"
+license="GNU GPLv3"
+
+[[mods]]
+modId="createultimine"
+version="${file.jarVersion}"
+displayName="Create Ultimine"
+authors="ChAoS-UnItY"
+logoFile="logo.png"
+description='''A Create mod addon that supports FTB Ultimine functionality. Ported to Minecraft 1.18.2.'''
+
+[[dependencies.createultimine]]
+    modId="forge"
+    mandatory=true
+    versionRange="[40.2.4,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.createultimine]]
+    modId="minecraft"
+    mandatory = true
+    versionRange="[1.18.2,1.19)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.createultimine]]
+    modId="create"
+    mandatory = true
+    versionRange="[0.5.1,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.createultimine]]
+    modId="ftbultimine"
+    mandatory = true
+    versionRange="[1802.3.4,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.createultimine]]
+    modId="ftblibrary"
+    mandatory = true
+    versionRange="[1802.3.6,)"
+    ordering="NONE"
+    side="BOTH"

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.simibubi.create</groupId>
+  <artifactId>create</artifactId>
+  <version>1.18.2-0.5.1.i</version>
+  <packaging>jar</packaging>
+  <name>Create</name>
+  <description>Local mirror of the Create 0.5.1.i jar so ForgeGradle can remap it via fg.deobf.</description>
+</project>

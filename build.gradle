@@ -1,0 +1,207 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '5.1.+', changing: true
+        // Kotlin version must match the Kotlin bundled with Kotlin for Forge (kfflib 3.12.0 -> Kotlin 1.8.21)
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.21'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'kotlin'
+apply plugin: 'idea'
+apply plugin: 'maven-publish'
+
+version = mod_version
+group = mod_group_id
+archivesBaseName = "${mod_id}-${minecraft_version}-forge"
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    // Mojang official mappings are the runtime names on Forge 1.17+, so mixins targeting mod classes
+    // (FTB Ultimine) with remap=false need no refmap.
+    mappings channel: 'official', version: minecraft_version
+
+    // Dependency mods (Create, FTB Ultimine/Library, Architectury) are published for the *production*
+    // runtime, where member names are SRG (m_135828_, f_143509_, ...). In this official-mapped dev
+    // environment those names do not exist, so their mixins would fail to find any targets. These two
+    // Mixin properties make Mixin rewrite each mod's refmap from SRG to the dev mappings using the
+    // SRG->official map that ForgeGradle generates.
+    def srgToOfficial = file('build/createSrgToMcp/output.srg').absolutePath
+    // JNA (pulled in by the dev runtime) extracts jnidispatch.dll into java.io.tmpdir. The default
+    // system temp directory is not writable in this environment, so point the game at a project-local one.
+    def gameTmpDir = file('tmp').absolutePath
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            property 'forge.enabledGameTestNamespaces', mod_id
+
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', srgToOfficial
+
+            jvmArg "-Djava.io.tmpdir=${gameTmpDir}"
+
+            mods {
+                createultimine {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            workingDirectory project.file('run/server')
+
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', srgToOfficial
+
+            jvmArg "-Djava.io.tmpdir=${gameTmpDir}"
+
+            mods {
+                createultimine {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+// Include assets and data from data generators
+sourceSets.main.resources { srcDirs 'src/generated/resources/' }
+
+// In a production jar Forge reads the "MixinConfigs" attribute from META-INF/MANIFEST.MF (set on the
+// jar task below). In a dev run the mod is loaded from build/resources/main, which has no manifest,
+// so Forge would never register the mixin config. Emit one into the dev resource output only - the
+// jar task writes its own manifest, so the shipped artifact is unaffected.
+def devManifest = tasks.register('devManifest') {
+    def outDir = layout.buildDirectory.dir('resources/main/META-INF')
+    def configName = "mixins.${mod_id}.json"
+    outputs.dir(outDir)
+    inputs.property('configName', configName)
+    doLast {
+        def f = outDir.get().file('MANIFEST.MF').asFile
+        f.parentFile.mkdirs()
+        f.setText("Manifest-Version: 1.0\nMixinConfigs: ${configName}\n\n", 'UTF-8')
+    }
+}
+
+processResources.finalizedBy(devManifest)
+
+repositories {
+    // Local mirror holding the Create / Registrate jars. These are third-party binaries and are
+    // intentionally NOT stored in this repository - see the "准备本地依赖" section of README.md.
+    // They must be *module* dependencies rather than plain file dependencies, otherwise fg.deobf()
+    // will not remap them and their mixins (which target SRG names) cannot apply in this
+    // official-mapped dev runtime.
+    maven {
+        name = 'Local Mods'
+        url = uri("${projectDir}/local-maven")
+    }
+    maven {
+        name = 'Kotlin for Forge'
+        url = 'https://thedarkcolour.github.io/KotlinForForge/'
+        content { includeGroup 'thedarkcolour' }
+    }
+    maven { url = 'https://maven.ftb.dev/releases' } // FTB Mods
+    maven { url = 'https://maven.architectury.dev' } // Arch API
+}
+
+// Fail fast with actionable instructions when the local mirrors are missing, instead of letting
+// Gradle report an opaque "Could not find com.simibubi.create:create:..." further down.
+def requiredLocalArtifacts = [
+        "local-maven/com/simibubi/create/create/${minecraft_version}-${create_version}/" +
+                "create-${minecraft_version}-${create_version}.jar",
+        "local-maven/com/tterrag/registrate/Registrate/MC${minecraft_version}-${registrate_version}/" +
+                "Registrate-MC${minecraft_version}-${registrate_version}.jar",
+]
+def missingLocalArtifacts = requiredLocalArtifacts.findAll { !file(it).exists() }
+if (!missingLocalArtifacts.isEmpty()) {
+    throw new GradleException("""
+缺少本地依赖 jar（本仓库不存放第三方模组二进制，需自行下载）：
+
+${missingLocalArtifacts.collect { '  - ' + it }.join('\n')}
+
+获取步骤见 README.md 的“准备本地依赖”一节，简述：
+  1. Create ${create_version} (MC ${minecraft_version})：CurseForge project 328085, fileId 5797603
+     放到 local-maven/com/simibubi/create/create/${minecraft_version}-${create_version}/
+  2. 从 Create jar 内解出 META-INF/jarjar/Registrate-MC${minecraft_version}-${registrate_version}.jar
+     放到 local-maven/com/tterrag/registrate/Registrate/MC${minecraft_version}-${registrate_version}/
+  （同名 .pom 文件仓库中已提供，无需自行创建）
+""".stripIndent())
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Kotlin for Forge - language provider + bundled Kotlin libraries
+    implementation "thedarkcolour:kotlinforforge:$kff_version"
+
+    // Create - served from the local mirror so fg.deobf() remaps it to the dev mappings.
+    // Flywheel & Registrate ship jar-in-jar inside the Create jar.
+    implementation fg.deobf("com.simibubi.create:create:${minecraft_version}-${create_version}")
+    // Registrate is the library Create builds its registry entries with; it is nested inside the
+    // Create jar for release, but it must be a remapped module dependency here, because javac needs
+    // its types (e.g. ItemEntry) and Create calls into it at runtime.
+    // Flywheel needs no declaration: it is client-only, ships jar-in-jar inside the Create jar, and
+    // nothing in this mod references it.
+    implementation fg.deobf("com.tterrag.registrate:Registrate:MC${minecraft_version}-${registrate_version}")
+
+    // FTB Ultimine - the mod we hook into. Its POM drags in ftb-ranks, which in turn forces newer
+    // (and here unwanted) ftb-library / architectury versions, so exclude them and pin the rest of
+    // the stack explicitly. fg.deobf() is required: all three are published against SRG names.
+    implementation(fg.deobf("dev.ftb.mods:ftb-ultimine-forge:$ftb_ultimine_version")) {
+        exclude group: 'dev.ftb.mods', module: 'ftb-ranks-forge'
+        exclude group: 'dev.ftb.mods', module: 'ftb-library-forge'
+        exclude group: 'dev.architectury', module: 'architectury-forge'
+    }
+    implementation fg.deobf("dev.ftb.mods:ftb-library-forge:$ftb_library_version")
+    implementation fg.deobf("dev.architectury:architectury-forge:$architectury_version")
+}
+
+compileKotlin {
+    kotlinOptions.jvmTarget = '17'
+}
+
+jar {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : "1",
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.version,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : 'mixins.createultimine.json'
+        ])
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+jar.finalizedBy('reobfJar')
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
