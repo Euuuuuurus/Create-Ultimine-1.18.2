@@ -7,6 +7,9 @@
 #    The patched ZipFileSystem (tools/zipfs-patch, built by tools/PatchZipfs.java) forces
 #    readOnly=false; JAVA_TOOL_OPTIONS propagates --patch-module to the Gradle daemon AND to every
 #    forked java child (including FG's internal JarExec invoked during configuration).
+#  - -Dnet.minecraftforge.gradle.check.certs=false: the sandbox's Windows Schannel TLS stack cannot
+#    validate maven.minecraftforge.net, so ForgeGradle aborts while applying its plugin. Only needed
+#    here; on a normal machine remove this flag (and the whole JAVA_TOOL_OPTIONS line).
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Args
@@ -15,6 +18,6 @@ $ErrorActionPreference = 'Stop'
 $env:JAVA_HOME = 'D:\agent\createUltimine\tools\jdk17\jdk-17.0.8+7'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 $env:GRADLE_USER_HOME = 'D:\agent\createUltimine\.gradle-home'
-$env:JAVA_TOOL_OPTIONS = "--patch-module=jdk.zipfs=D:/agent/createUltimine/tools/zipfs-patch"
+$env:JAVA_TOOL_OPTIONS = "--patch-module=jdk.zipfs=D:/agent/createUltimine/tools/zipfs-patch -Dnet.minecraftforge.gradle.check.certs=false"
 & (Join-Path $PSScriptRoot '..\gradlew.bat') @Args
 exit $LASTEXITCODE

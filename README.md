@@ -129,13 +129,14 @@ local-maven/
 .\tools\run-gradle.ps1 runServer
 ```
 
-> `tools/run-gradle.ps1` 固定了本机 JDK 17 路径（`tools/jdk17/jdk-17.0.8+7`）
-> 与工作区内的 Gradle 缓存目录（`.gradle-home`）。在其他机器上把 JDK 17 设为 `JAVA_HOME` 后直接运行
-> `gradlew.bat`，并把 `gradle.properties` 里的 `org.gradle.user.home` 改为你的路径即可。
+> `tools/run-gradle.ps1` 只是本机（DSH 沙箱）的包装脚本，固定了 JDK 17 路径
+> （`tools/jdk17/jdk-17.0.8+7`）与工作区内的 Gradle 缓存目录（`.gradle-home`），并附加了下一节所述的
+> 沙箱 workaround。**普通机器不需要它**：把 JDK 17 设为 `JAVA_HOME` 后直接运行
+> `gradlew.bat build`，并把 `gradle.properties` 里的 `org.gradle.user.home` 一行删掉即可。
 
 ### 本机（DSH 沙箱）环境 workaround
 
-`tools/run-gradle.ps1` 与 `gradle.properties` 里做了三件**仅限本沙箱**的处理，普通机器上都不需要：
+`tools/run-gradle.ps1` 与 `gradle.properties` 里做了四件**仅限本沙箱**的处理，普通机器上都不需要：
 
 1. **`JAVA_TOOL_OPTIONS=--patch-module=jdk.zipfs=<补丁目录>`**：本沙箱中 `Files.isWritable()` 恒为
    `false`（Windows AccessCheck 探针被环境拦截），导致 JDK 的 `jdk.zipfs` 把所有 zip 按只读打开，
@@ -143,10 +144,15 @@ local-maven/
    补丁由 `tools/PatchZipfs.java` 生成：把 `ZipFileSystem` 构造器里的 `iload 5` 改成 `iconst_1`
    （2 字节，栈形状与字节长度都不变，因此 StackMapTable 仍然有效），使 `readOnly` 恒为 `false`。
    **普通机器请删除 `tools/run-gradle.ps1` 里的 `JAVA_TOOL_OPTIONS` 行。**
-2. **`-Djava.io.tmpdir=<工作区>/tmp`**（`org.gradle.jvmargs` 与 run 配置各一处）：Kotlin 编译器要在
+2. **`-Dnet.minecraftforge.gradle.check.certs=false`**：本沙箱的 Windows Schannel TLS 栈无法校验
+   `maven.minecraftforge.net` 的证书，ForgeGradle 在 apply 插件阶段就会
+   `Failed to validate certificate for host 'https://maven.minecraftforge.net/'` 而中断。
+   注意这个失败**只在 Gradle 缓存未命中时需要证书校验时出现**，所以 `clean build` 或首次构建
+   会撞上、而增量构建可能侥幸通过。**普通机器请去掉该参数。**
+3. **`-Djava.io.tmpdir=<工作区>/tmp`**（`org.gradle.jvmargs` 与 run 配置各一处）：Kotlin 编译器要在
    `java.io.tmpdir` 写 `.alive` 标记文件、JNA 要解压 `jnidispatch.dll`，而系统 Temp 在本沙箱不可写。
    **普通机器删除即可。**
-3. **`kotlin.compiler.execution.strategy=in-process`**：避开独立 Kotlin daemon 的临时文件。可选。
+4. **`kotlin.compiler.execution.strategy=in-process`**：避开独立 Kotlin daemon 的临时文件。可选。
 
 ## 打包产物
 
